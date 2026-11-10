@@ -1,0 +1,19 @@
+<IfModule mod_rewrite.c>
+
+RewriteEngine On
+
+## Begin - Security
+# Block direct access to files inside the vendor folders
+RewriteRule /vendor/ - [F]
+# Block direct access to .po and .pot files inside the locale folders
+RewriteRule (^|/)locale/.*\.(po|pot)$ - [F]
+# Block direct access to .md and .sql files except for those uploaded to assets/FileUploads/
+RewriteRule ^(?!assets/FileUploads/).*\.(md|sql)$ - [F]
+# Block direct access to files and folders beginning with a dot
+RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F]
+# Block direct access to specific files
+RewriteRule (^|/)(LICENSE|COPYRIGHT|composer\.lock|composer\.json|package\.json)$ - [F]
+#
+## End - Security
+
+</IfModule>

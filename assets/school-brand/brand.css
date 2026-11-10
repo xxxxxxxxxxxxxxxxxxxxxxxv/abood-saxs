@@ -1,0 +1,12 @@
+.school-brand-name {
+	display: block;
+	padding: 12px;
+	font-size: 1rem;
+	font-weight: bold;
+	line-height: 1.6;
+	text-align: center;
+}
+
+#menu .school-brand-name {
+	max-width: 100%;
+}

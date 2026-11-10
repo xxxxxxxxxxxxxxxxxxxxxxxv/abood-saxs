@@ -1,0 +1,1052 @@
+<?php
+/**
+ * Warehouse
+ *
+ * Get configuration
+ * Autoload classes (PSR-4)
+ * Load functions
+ * Date format & Time zone
+ * Start Session
+ * Content Security Policy
+ * Sanitize $_REQUEST array
+ * Internationalization
+ * Modules & Plugins
+ * Update RosarioSIS
+ * Warehouse() function (Output HTML header (including Bottom & Side menus), or footer)
+ * isAJAX() function (AJAX request detection)
+ * ETagCache() function (ETag cache system)
+ *
+ * @package RosarioSIS
+ */
+
+define( 'ROSARIO_VERSION', '13.0.3' );
+
+/**
+ * Include config.inc.php file.
+ *
+ * Do NOT change for require_once, include_once allows the error message to be displayed.
+ */
+
+if ( ! include_once 'config.inc.php' )
+{
+	die( 'config.inc.php file not found. Please read the installation directions.' );
+}
+
+if ( empty( $DatabaseType ) )
+{
+	// @since 10.0 Add $DatabaseType configuration variable
+	$DatabaseType = 'postgresql';
+}
+
+require_once 'database.inc.php';
+
+/**
+ * Optional configuration
+ * You can override the following definitions in the config.inc.php file
+ */
+
+if ( ! defined( 'ROSARIO_DEBUG' ) )
+{
+	// Debug mode (for developers): enables notices.
+	define( 'ROSARIO_DEBUG', false );
+}
+
+if ( ROSARIO_DEBUG )
+{
+	error_reporting( E_ALL );
+}
+
+// Server Paths.
+
+if ( ! isset( $RosarioPath ) )
+{
+	$RosarioPath = __DIR__ . '/';
+}
+
+if ( ! isset( $StudentPicturesPath ) )
+{
+	$StudentPicturesPath = 'assets/StudentPhotos/';
+}
+
+if ( ! isset( $UserPicturesPath ) )
+{
+	$UserPicturesPath = 'assets/UserPhotos/';
+}
+
+if ( ! isset( $FileUploadsPath ) )
+{
+	$FileUploadsPath = 'assets/FileUploads/';
+}
+
+if ( ! isset( $LocalePath ) )
+{
+	// Path were the language packs are stored. You need to restart Apache at each change in this directory.
+	$LocalePath = 'locale';
+}
+
+if ( ! isset( $ETagCache ) )
+{
+	// ETag cache system.
+	$ETagCache = true;
+}
+
+/**
+ * Autoload classes (PSR-4): classes/[Namespace]/[Class].php
+ *
+ * @since 12.7
+ *
+ * @example `new curl();` will load the classes/curl.php file
+ * @example `new PHPMailer\PHPMailer\PHPMailer();` will load the classes/PHPMailer/PHPMailer/PHPMailer.php file
+ * @example `class_exists( 'ZipArchive' )` will try to load the classes/ZipArchive.php file
+ *
+ * @link https://www.php.net/manual/en/language.oop5.autoload.php
+ */
+spl_autoload_register(
+	function( $class )
+	{
+		$class_path = 'classes/' . str_replace( '\\', '/', ltrim( $class, '\\' ) ) . '.php';
+
+		if ( file_exists( $class_path ) )
+		{
+			// Check if file exists before require.
+			// Otherwise would break for `class_exists( 'ZipArchive' )` if php-zip missing
+			require $class_path;
+
+			return true;
+		}
+
+		return false;
+	}
+);
+
+/**
+ * Load functions
+ */
+$functions = glob( 'functions/*.php', GLOB_NOSORT );
+
+foreach ( $functions as $function )
+{
+	require_once $function;
+}
+
+if ( $DatabaseType === 'mysql' )
+{
+	/**
+	 * Set MySQL charset to utf8mb4 and collation to utf8mb4_unicode_520_ci
+	 *
+	 * @since 10.0
+	 *
+	 * Fix SQL error "Illegal mix of collations (utf8mb4_unicode_520_ci,IMPLICIT)
+	 * 	and (utf8mb4_general_ci,IMPLICIT) for operation '='"
+	 * @link https://www.php.net/manual/en/mysqli.set-charset.php#121647
+	 */
+	$sql_set = "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_520_ci;";
+
+	if ( ! ROSARIO_DEBUG )
+	{
+		/**
+		 * Set MySQL mode to accept pipes || as concatenation operator.
+		 * For backward-compatibility purpose only, try to always use CONCAT() instead of ||
+		 *
+		 * @since 10.0
+		 * @link https://stackoverflow.com/questions/5975958/string-concatenation-in-mysql#5975980
+		 *
+		 * MySQL mode: disable ONLY_FULL_GROUP_BY
+		 *
+		 * @since 11.6.1
+		 *
+		 * Fix SQL error "Mixing of GROUP columns (MIN(),MAX(),COUNT(),...)
+		 *  with no GROUP columns is illegal if there is no GROUP BY clause"
+		 * Fix SQL error "Expression of SELECT list is not in GROUP BY clause and contains
+		 *  nonaggregated column which is not functionally dependent on columns in GROUP BY clause"
+		 *
+		 * ONLY_FULL_GROUP_BY mode is enabled by default since MySQL 5.7.5
+		 * @link https://dev.mysql.com/doc/refman/5.7/en/sql-mode.html#sqlmode_only_full_group_by
+		 */
+		$sql_set .= "SET sql_mode=CONCAT(REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''),',PIPES_AS_CONCAT');";
+	}
+}
+
+/**
+ * Date format & Time zone
+ */
+if ( $DatabaseType === 'postgresql' )
+{
+	/**
+	 * Set PostgreSQL Session Date Format / Datestyle to ISO.
+	 *
+	 * @since 2.9
+	 * @since 10.0 Move query from Date.php to Warehouse.php
+	 */
+	$sql_set = "SET DATESTYLE='ISO';";
+}
+
+if ( isset( $Timezone ) )
+{
+	// Time zone.
+	// Sets the default time zone used by all date/time functions.
+	if ( date_default_timezone_set( $Timezone ) )
+	{
+		if ( $DatabaseType === 'mysql' )
+		{
+			/**
+			 * Get offset from time zone.
+			 *
+			 * @link https://stackoverflow.com/questions/25086456/php-convert-string-timezone-format-to-offset-integer#25086526
+			 */
+			$date_time_zone = new DateTimeZone( $Timezone );
+			$date = new DateTime( '', $date_time_zone );
+			$offset = $date_time_zone->getOffset( $date );
+			$offset = ( $offset < 0 ? '-' : '+' ) . gmdate( 'H:i', abs( $offset ) );
+
+			$sql_set .= "SET time_zone='" . $offset . "';";
+		}
+		else
+		{
+			// If valid PHP timezone_identifier, should be OK for PostgreSQL.
+			$sql_set .= "SET TIMEZONE TO '" . $Timezone . "';";
+		}
+	}
+}
+else
+{
+	// Fix PHP error if date.timezone ini setting is an invalid time zone identifier.
+	date_default_timezone_set( date_default_timezone_get() );
+}
+
+// Performance: Run all SQL SET (NAMES, SQL_MODE, DATESTYLE, TIMEZONE) queries at once.
+DBQuery( $sql_set );
+
+// Send email on PHP fatal error.
+register_shutdown_function( 'ErrorSendEmail' );
+
+/**
+ * Start Session
+ */
+session_name( 'RosarioSIS' );
+
+// @link http://php.net/manual/en/session.security.php
+$cookie_path = dirname( $_SERVER['SCRIPT_NAME'] ) === DIRECTORY_SEPARATOR ?
+	'/' : dirname( $_SERVER['SCRIPT_NAME'] ) . '/';
+
+// Fix #316 CSRF security issue set cookie samesite to strict.
+// @link https://www.php.net/manual/en/function.session-set-cookie-params.php#125072
+$cookie_samesite = 'Strict';
+
+// Cookie secure flag for https.
+$cookie_https_only = ( ! empty( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ) ||
+	( isset( $_SERVER['SERVER_PORT'] ) && $_SERVER['SERVER_PORT'] == 443 );
+
+if ( PHP_VERSION_ID < 70300 )
+{
+	// PHP version < 7.3.
+	session_set_cookie_params(
+		0,
+		$cookie_path . '; samesite=' . $cookie_samesite,
+		'',
+		$cookie_https_only,
+		true
+	);
+}
+else
+{
+	session_set_cookie_params( [
+		'lifetime' => 0,
+		'path' => $cookie_path,
+		'domain' => '',
+		'secure' => $cookie_https_only,
+		'httponly' => true,
+		'samesite' => $cookie_samesite,
+	] );
+}
+
+session_cache_limiter( 'nocache' );
+
+session_start();
+
+if ( empty( $_SESSION['DefaultSyear'] ) )
+{
+	// @since 11.1 Copy $DefaultSyear global var to session (once) to prevent errors when edited
+	$_SESSION['DefaultSyear'] = $DefaultSyear;
+}
+
+if ( empty( $_SESSION['token'] ) )
+{
+	/**
+	 * Add CSRF token to protect unauthenticated requests
+	 *
+	 * @since 9.0
+	 * @since 11.0 Fix PHP fatal error if openssl PHP extension is missing
+	 * @link https://stackoverflow.com/questions/5207160/what-is-a-csrf-token-what-is-its-importance-and-how-does-it-work
+	 */
+	$_SESSION['token'] = bin2hex( function_exists( 'openssl_random_pseudo_bytes' ) ?
+		openssl_random_pseudo_bytes( 16 ) :
+		( function_exists( 'random_bytes' ) ? random_bytes( 16 ) :
+			mb_substr( sha1( rand( 999999999, 9999999999 ), true ), 0, 16 ) ) );
+}
+
+if ( empty( $_SESSION['STAFF_ID'] )
+	&& empty( $_SESSION['STUDENT_ID'] )
+	&& ( basename( $_SERVER['SCRIPT_NAME'] ) === 'Modules.php'
+		|| basename( $_SERVER['SCRIPT_NAME'] ) === 'Bottom.php'
+		|| basename( $_SERVER['SCRIPT_NAME'] ) === 'Side.php'
+		|| ( basename( $_SERVER['SCRIPT_NAME'] ) === 'index.php'
+			&& isset( $_REQUEST['modfunc'] )
+			&& $_REQUEST['modfunc'] === 'first-login' ) ) )
+{
+	// Logout if no Staff or Student session ID.
+	/**
+	 * Redirect to Modules.php URL after login.
+	 *
+	 * @since 3.8
+	 * @since 12.9 Remove modfunc & token params from redirect URL
+	 */
+	$get = $_GET;
+
+	unset( $get['modfunc'], $get['token'] );
+
+	$redirect_to = basename( $_SERVER['SCRIPT_NAME'] ) === 'Modules.php' ?
+		'&redirect_to=' . urlencode( http_build_query( $get ) ) : '';
+
+	// Redirection is done in HTML in case current request is AJAX.
+	$redirect_url = 'index.php?modfunc=logout' . $redirect_to . '&token=' . $_SESSION['token'];
+	?>
+	<html>
+	<head>
+	<meta http-equiv="REFRESH" content="0;URL=<?php echo URLEscape( $redirect_url ); ?>" />
+	</head>
+	<body></body>
+	</html>
+	<?php
+	exit;
+}
+
+if ( ! empty( $_REQUEST['modfunc'] )
+	&& $_REQUEST['modfunc'] !== 'logout'
+	&& ( ! isset( $_REQUEST['token'] )
+		|| $_REQUEST['token'] !== $_SESSION['token'] ) )
+{
+	// Add X-CSRF-Token header to $.ajax() requests containing `modfunc=`
+	if ( ! isset( $_SERVER['HTTP_X_CSRF_TOKEN'] )
+		|| $_SERVER['HTTP_X_CSRF_TOKEN'] !== $_SESSION['token'] )
+	{
+		$logged_in = ! empty( $_SESSION['STAFF_ID'] ) || ! empty( $_SESSION['STUDENT_ID'] );
+
+		// Security fix #371 check CSRF token for modfunc requests
+		(new RosarioSIS\Functions\Hacking)->log(
+			// No token & not logged in, do not send email (99% chances its a bot)
+			( isset( $_REQUEST['token'] ) || $logged_in ),
+			// No user in session yet, 403 Forbidden error (99% chances its a bot)
+			$logged_in
+		);
+	}
+}
+
+/**
+ * Content Security Policy
+ * No need to send for AJAX requests as the browser keeps the original non-AJAX header
+ *
+ * @link https://gitlab.com/francoisjacquet/rosariosis/-/blob/mobile/plugins/Content_Security_Policy/README.md
+ *
+ * @since 12.6
+ * @since 13.0 Enforce CSP (Content Security Policy)
+ */
+if ( ! isAJAX() )
+{
+	header( 'Content-Security-Policy: ' . Config( 'CONTENT_SECURITY_POLICY' ) );
+}
+
+/**
+ * Array recursive walk (values AND keys!)
+ *
+ * @since 7.6 Fix #308 sanitize key. Pass array keys through function.
+ *
+ * @param  array  $array    Array by reference.
+ * @param  string $function Function name.
+ * @return void   &$array   Array passed through $function function
+ */
+function array_rwalk( &$array, $function )
+{
+	$key = array_keys( $array );
+
+	$size = count( $key );
+
+	for ( $i = 0; $i < $size; $i++ )
+	{
+		if ( is_array( $array[$key[$i]] ) )
+		{
+			array_rwalk( $array[$key[$i]], $function );
+		}
+		else
+		{
+			$array[$key[$i]] = $function( $array[$key[$i]] );
+		}
+
+		// Key is also passed through $function function.
+		$fkey = $function( $key[$i] );
+
+		if ( $fkey != $key[$i] ) // Weak comparison so we do not change integer value type.
+		{
+			// New key, order in array is lost (added last), sorry.
+			$array[$fkey] = $array[$key[$i]];
+
+			// Key passed through function differs, unset original key.
+			unset( $array[$key[$i]] );
+		}
+	}
+}
+
+/**
+ * Limit $_POST array size to a maximum of 16MB
+ *
+ * $_POST array size is limited by PHP post_max_size configuration option
+ * But this includes $_FILES as well & post_max_size must be greater than upload_max_filesize
+ * One may want to be able to upload a 100MB file, but may not want the $_POST var,
+ * with for example the text or HTML of a textarea to be 100MB and later stored in database.
+ *
+ * @link https://huntr.dev/bounties/430aedac-c7d9-4acb-9bab-bcc0595d9e95/
+ */
+if ( ! defined( 'ROSARIO_POST_MAX_SIZE_LIMIT' ) )
+{
+	/**
+	 * Fix a limit of 16MB based on MySQL max_allowed_packet default limit
+	 * Limit size can be overriden in the config.inc.php file
+	 */
+	define( 'ROSARIO_POST_MAX_SIZE_LIMIT', 16 * 1024 * 1024 ); // 16MB in bytes.
+}
+
+if ( $_POST
+	&& strlen( serialize( $_POST ) ) > ROSARIO_POST_MAX_SIZE_LIMIT )
+{
+	$post_max_size_limit = function( $value ) {
+		if ( strlen( $value ) > ( ROSARIO_POST_MAX_SIZE_LIMIT / 4 ) )
+		{
+			// Reset value > limit / 4, or else we would send it in the HackingLog email!
+			return 'ROSARIO_POST_MAX_SIZE_LIMIT / 4 reached.';
+		}
+
+		return $value;
+	};
+
+	array_rwalk( $_POST, $post_max_size_limit );
+
+	array_rwalk( $_REQUEST, $post_max_size_limit );
+
+	// Do not translate.
+	$error[] = 'You are submitting too much data: over the ' .
+		( ROSARIO_POST_MAX_SIZE_LIMIT / 1024 / 1024 ) .
+		'M limit. Try reducing the data you are submitting.';
+
+	// Send email, do not redirect, display error.
+	(new RosarioSIS\Functions\Hacking)->log( true, false );
+}
+
+/**
+ * Sanitize $_REQUEST array
+ * ($_POST + $_GET)
+ */
+// Escape strings for DB queries.
+array_rwalk( $_REQUEST, 'DBEscapeString' );
+
+// Remove HTML tags.
+array_rwalk( $_REQUEST, 'strip_tags' );
+
+/**
+ * Internationalization
+ */
+
+if ( ! empty( $_REQUEST['locale'] )
+	&& in_array( $_REQUEST['locale'], $RosarioLocales ) )
+{
+	$_SESSION['locale'] = $_REQUEST['locale'];
+}
+
+if ( empty( $_SESSION['locale'] ) )
+{
+	$_SESSION['locale'] = $RosarioLocales[0]; // English?
+}
+
+$locale = $_SESSION['locale'];
+
+putenv( 'LC_ALL=' . $locale );
+
+function_exists( '_setlocale' ) ?
+	// PHP Compatibility: MoTranslator.
+	_setlocale( LC_ALL, $locale ) :
+	setlocale( LC_ALL, $locale );
+
+// Numeric separator ".".
+setlocale( LC_NUMERIC, 'C', 'english', 'en_US', 'en_US.utf8', 'en_US.UTF-8' );
+
+if ( $locale === 'tr_TR.utf8' )
+{
+	// Bugfix for Turkish characters conversion.
+	setlocale( LC_CTYPE, 'C', 'english', 'en_US', 'en_US.utf8', 'en_US.UTF-8' );
+}
+
+// Binds the messages domain to the locale folder.
+bindtextdomain( 'rosariosis', $LocalePath );
+
+// Ensures text returned is utf-8, quite often this is iso-8859-1 by default.
+bind_textdomain_codeset( 'rosariosis', 'UTF-8' );
+
+// Sets the domain name, this means gettext will be looking for a file called rosariosis.mo.
+textdomain( 'rosariosis' );
+
+if ( mb_internal_encoding() !== 'UTF-8' )
+{
+	// Multibyte strings: check if not UTF-8 first to avoid cost of setting.
+	mb_internal_encoding( 'UTF-8' );
+}
+
+/**
+ * Update RosarioSIS
+ * Automatically runs after manual files update
+ * To apply eventual incremental DB updates
+ *
+ * @see ProgramFunctions/Update.fnc.php
+ * @since 2.9
+ */
+// Check if version in DB < ROSARIO_VERSION.
+
+if ( version_compare( Config( 'VERSION' ), ROSARIO_VERSION, '<' ) )
+{
+	require_once 'ProgramFunctions/Update.fnc.php';
+
+	// Run Update() to apply updates if any.
+	Update();
+}
+
+/**
+ * Modules
+ *
+ * Core modules (packaged with RosarioSIS): cannot be deleted.
+ */
+$RosarioCoreModules = [
+	'School_Setup',
+	'Students',
+	'Users',
+	'Scheduling',
+	'Grades',
+	'Attendance',
+	'Eligibility',
+	'Discipline',
+	'Accounting',
+	'Student_Billing',
+	'Food_Service',
+	'Resources',
+	'Custom',
+];
+
+$RosarioModules = unserialize( Config( 'MODULES' ) );
+
+$non_core_modules = array_diff_key( $RosarioModules, array_flip( $RosarioCoreModules ) );
+
+_LoadAddons( $non_core_modules, 'modules/' );
+
+/**
+ * Plugins
+ *
+ * Core plugins (packaged with RosarioSIS): cannot be deleted.
+ */
+$RosarioCorePlugins = [
+	'Content_Security_Policy',
+	'Moodle',
+];
+
+$RosarioPlugins = unserialize( Config( 'PLUGINS' ) );
+
+_LoadAddons( $RosarioPlugins, 'plugins/' );
+
+/**
+ * Load not core modules & plugins
+ * (functions & locale)
+ * Deactivate if does not exist
+ *
+ * Local function
+ *
+ * @param  array  $addons Non core addons (Plugins or Modules).
+ * @param  string $folder Plugin or Module folder.
+ * @return void
+ */
+function _LoadAddons( $addons, $folder )
+{
+	global $RosarioModules,
+		$RosarioPlugins;
+
+	/**
+	 * Check if non core activated modules exist.
+	 * Load locale.
+	 * Load functions (optional).
+	 */
+
+	foreach ( (array) $addons as $addon => $activated )
+	{
+		if ( ! $activated )
+		{
+			continue;
+		}
+
+		if ( $folder === 'modules/'
+			&& ! file_exists( $folder . $addon . '/Menu.php' ) )
+		{
+			// If module does not exist, deactivate it.
+			$RosarioModules[$addon] = false;
+
+			continue;
+		}
+
+		$addon_functions = $folder . $addon . '/functions.php';
+
+		if ( file_exists( $addon_functions ) )
+		{
+			require_once $addon_functions;
+		}
+		elseif ( $folder === 'plugins/' )
+		{
+			// If plugin does not exist, deactivate it.
+			$RosarioPlugins[$addon] = false;
+
+			continue;
+		}
+
+		// Load addon locale.
+		$locale_path = $folder . $addon . '/locale';
+
+		if ( ! is_dir( $locale_path ) )
+		{
+			continue;
+		}
+
+		// Binds the messages domain to the locale folder.
+		bindtextdomain( $addon, $locale_path );
+
+		// Ensures text returned is utf-8, quite often this is iso-8859-1 by default.
+		bind_textdomain_codeset( $addon, 'UTF-8' );
+	}
+}
+
+/**
+ * Output HTML header (including Bottom & Side menus), or footer
+ *
+ * @example  Warehouse( 'header' );
+ *
+ * @since 3.8 Warehouse header head hook
+ * @since 3.8 Warehouse footer hook
+ * @since 4.4 Warehouse header hook
+ * @since 6.0 Warehouse Header Javascripts
+ * @since 12.9 Security fix #371 Request Forgery add CSRF token to header
+ *
+ * @global $_ROSARIO  Use $_ROSARIO['page']
+ *
+ * @uses isAJAX()
+ * @uses ETagCache()
+ *
+ * @param string $mode 'header' or 'footer'.
+ */
+function Warehouse( $mode )
+{
+	global $_ROSARIO;
+
+	if ( isset( $_REQUEST['_ROSARIO_PDF'] ) )
+	{
+		if ( $mode === 'header' )
+		{
+			// Start buffer.
+			ob_start();
+		}
+
+		// Printing PDF, skip, see PDF.fnc.php.
+
+		return;
+	}
+
+	switch ( $mode )
+	{
+		// Header HTML.
+		case 'header':
+			ETagCache( 'start' );
+
+			if ( isAJAX() )
+			{
+				// JS not available, reload page (eg. when reopening closed tab)
+				// @since 12.5 CSP remove unsafe-inline Javascript
+				if ( $_ROSARIO['page'] === 'modules' ): ?>
+					<script src="assets/js/csp/noJsReload.js?v=12.5"></script>
+				<?php endif;
+
+				// AJAX: we only need to generate #body content.
+				break;
+			}
+
+			$lang_2_chars = mb_substr( $_SESSION['locale'], 0, 2 );
+
+			// Right to left direction.
+			$RTL_languages = [ 'ar', 'he', 'dv', 'fa', 'ur', 'ps' ];
+
+			$dir_RTL = in_array( $lang_2_chars, $RTL_languages ) ? ' dir="RTL"' : '';
+
+			$stylesheet_css = 'assets/themes/' . Preferences( 'THEME' ) . '/stylesheet.css';
+
+			// @since 12.3 Cache killer: use file last modified time hash instead of RosarioSIS version
+			$stylesheet_css_hash = hash( 'adler32', filemtime( $stylesheet_css ) );
+			?>
+<!doctype html>
+<html lang="<?php echo $lang_2_chars; ?>"<?php echo $dir_RTL; ?>>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width">
+	<meta name="application-name" content="<?php echo AttrEscape( SchoolBrandName() ); ?>">
+	<meta name="description" content="<?php echo AttrEscape( SchoolBrandNameEnglish() ); ?>">
+	<meta name="apple-mobile-web-app-title" content="<?php echo AttrEscape( SchoolBrandName() ); ?>">
+	<meta property="og:site_name" content="<?php echo AttrEscape( SchoolBrandNameEnglish() ); ?>">
+	<title><?php echo AttrEscape( SchoolBrandName() ); ?></title>
+	<?php if ( is_file( SchoolBrandIcon() ) ) : ?>
+	<link rel="icon" href="<?php echo AttrEscape( SchoolBrandIcon() ); ?>">
+	<?php endif; ?>
+	<?php if ( is_file( SchoolBrandTouchIcon() ) ) : ?>
+	<link rel="apple-touch-icon" href="<?php echo AttrEscape( SchoolBrandTouchIcon() ); ?>">
+	<?php endif; ?>
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="token" content="<?php echo AttrEscape( $_SESSION['token'] ); ?>">
+	<link rel="stylesheet" href="<?php echo $stylesheet_css; ?>?<?php echo $stylesheet_css_hash; ?>">
+	<link rel="stylesheet" href="assets/school-brand/brand.css">
+	<style>.highlight,.highlight-hover:hover{background-color:<?php echo Preferences( 'HIGHLIGHT' ); ?> !important;}</style>
+	<?php
+
+			if ( $_ROSARIO['page'] === 'modules'
+				|| $_ROSARIO['page'] === 'first-login'
+				|| $_ROSARIO['page'] === 'create-account'
+				|| $_ROSARIO['page'] === 'password-reset' )
+			{
+				// @since 6.0 Warehouse Header Javascripts.
+				WarehouseHeaderJS();
+			}
+
+			/**
+			 * Hook.
+			 *
+			 * Add your extra module/plugin JS and/or CSS (dependencies) to HTML head here.
+			 *
+			 * @since 3.8
+			 *
+			 * @since 4.5.1 Move Header head action hook outisde page condition.
+			 */
+			do_action( 'Warehouse.php|header_head' );
+		?>
+	<noscript>
+		<meta http-equiv="REFRESH" content="0; url=index.php?modfunc=logout&reason=javascript">
+	</noscript>
+</head>
+<body class="<?php echo AttrEscape( $_ROSARIO['page'] ); ?>">
+<?php
+			if ( $_ROSARIO['page'] === 'modules' ): ?>
+<div id="wrap">
+	<footer id="footer" class="mod">
+		<?php require_once 'Bottom.php'; // Include Bottom menu. ?>
+	</footer>
+	<aside id="menu" class="mod">
+		<?php require_once 'Side.php'; // Include Side menu. ?>
+	</aside>
+
+<?php
+			endif;
+
+			?>
+	<div id="body" tabindex="0" role="main" class="mod">
+<?php
+			/**
+			 * Hook.
+			 *
+			 * Add your extra module/plugin HTML to body here.
+			 *
+			 * @since 4.4
+			 */
+			do_action( 'Warehouse.php|header' );
+
+		break;
+
+		// Footer HTML.
+		case 'footer':
+			?>
+<br>
+<?php
+
+			if ( isset( $_ROSARIO['page'] )
+				&& $_ROSARIO['page'] === 'modules' ):
+
+				/**
+				 * User session array
+				 * Compare with left menu and update if needed
+				 *
+				 * @var array
+				 *
+				 * @see warehouse.js ajaxPrepare()
+				 *
+				 * @since 12.5 CSP remove unsafe-inline Javascript
+				 */
+				$user_session = [
+					'modname' => $_REQUEST['modname'],
+					'studentId' => UserStudentID(),
+					'staffId' => UserStaffID(),
+					'school' => UserSchool(),
+					'mp' => UserMP(),
+					'period' => UserCoursePeriod(),
+				];
+			?>
+		<input type="hidden" disabled id="warehouse_user_session" data-value="<?php echo AttrEscape( json_encode( $user_session ) ); ?>" />
+			<?php
+			/**
+			 * Hook.
+			 *
+			 * Add your extra module/plugin JS (dependencies) to HTML footer here.
+			 *
+			 * @since 3.8
+			 * @since 4.4 Hook always runs (no conditions).
+			 */
+			do_action( 'Warehouse.php|footer' );
+
+			// If not AJAX request.
+			if ( ! isAJAX() ):
+			?>
+	</div><!-- #body -->
+	<div class="ajax-error"></div>
+	</div><!-- #wrap -->
+</body></html>
+<?php
+			endif;
+
+			elseif ( ! isAJAX() ): // Other pages (not modules).
+
+				?>
+	</div><!-- #body -->
+</body></html>
+<?php
+			endif;
+
+			ETagCache( 'stop' );
+
+			break;
+	}
+
+	// End switch.
+}
+
+/**
+ * Warehouse Header Javascripts
+ * Loads jQuery, plugins, warehouse & calendar lang JS.
+ * Loads theme's scripts.js file if any found.
+ *
+ * @since 6.0
+ * @since 7.6 JS remove warehouse.min.js & include warehouse.js inside plugins.min.js
+ */
+function WarehouseHeaderJS()
+{
+	$lang_2_chars = mb_substr( $_SESSION['locale'], 0, 2 );
+
+	// @since 12.3 Cache killer: use file last modified time hash instead of RosarioSIS version
+	$plugins_min_js_hash = hash( 'adler32', filemtime( 'assets/js/plugins.min.js' ) );
+	?>
+	<script src="assets/js/jquery.js?v=3.7.1"></script>
+	<script src="assets/js/plugins.min.js?<?php echo $plugins_min_js_hash; ?>"></script>
+	<script src="assets/js/jscalendar/lang/calendar-<?php echo file_exists( 'assets/js/jscalendar/lang/calendar-' . $lang_2_chars . '.js' ) ? $lang_2_chars : 'en'; ?>.js"></script>
+	<?php
+	// Add scripts.js file from theme if any found.
+	if ( file_exists( 'assets/themes/' . Preferences( 'THEME' ) . '/scripts.js' ) ): ?>
+		<script src="assets/themes/<?php echo Preferences( 'THEME' ); ?>/scripts.js"></script>
+	<?php endif;
+}
+
+/**
+ * Popup window detection
+ *
+ * @deprecated since 12.0 Use colorBox instead of popup window
+ *
+ * Set it once in Modules.php:
+ * @example isPopup( $modname, $_REQUEST['modfunc'] );
+ * Later call it:
+ * @example if ( isPopup() )
+ * @link http://www.securiteam.com/securitynews/6S02U1P6BI.html
+ *
+ * @param  string  $modname Mod name. Optional, defaults to ''.
+ * @param  string  $modfunc Mod function. Optional, defaults to ''.
+ * @return boolean True if popup, else false
+ */
+function isPopup( $modname = '', $modfunc = '' )
+{
+	// Raise deprecation notice.
+	RosarioSIS\Functions\Deprecation::trigger(
+		'RosarioSIS',
+		'12.0',
+		'isPopup() function is deprecated, use colorBox instead of popup window. It will be removed in 14.0.'
+	);
+
+	// Always return false.
+	return false;
+
+	/**
+	 * Popup window detection.
+	 *
+	 * FJ security fix, cf http://www.securiteam.com/securitynews/6S02U1P6BI.html
+	 */
+
+	if ( in_array(
+		$modname,
+		[
+			'misc/ChooseRequest.php',
+			'misc/ChooseCourse.php',
+			'misc/ViewContact.php',
+		]
+	)
+		|| ( $modname === 'School_Setup/Calendar.php'
+			&& mb_strpos( $modfunc, 'detail' ) === 0 )
+		|| ( in_array(
+			$modname,
+			[
+				'Scheduling/MassDrops.php',
+				'Scheduling/Schedule.php',
+				'Scheduling/MassSchedule.php',
+				'Scheduling/MassRequests.php',
+				'Scheduling/Courses.php',
+			]
+		)
+			&& $modfunc === 'choose_course' ) )
+	{
+		$is_popup = true;
+	}
+
+	return $is_popup;
+}
+
+/**
+ * AJAX request detection
+ *
+ * @example if ( isAJAX() )
+ * @since 3.0.1
+ *
+ * @return boolean True if is AJAX, else false
+ */
+function isAJAX()
+{
+	return isset( $_SERVER['HTTP_X_REQUESTED_WITH'] )
+		&& $_SERVER['HTTP_X_REQUESTED_WITH'] === 'XMLHttpRequest';
+}
+
+/**
+ * ETag cache system.
+ * Start buffer, or stop buffer
+ * and calculate ETag:
+ * If ETag === If-None-Match, then send 403
+ * Else send content (buffer) + ETag.
+ * If no mode is set, will only check if $ETagCache activated.
+ *
+ * @global $ETagCache ETag cache system.
+ * @since  3.1
+ * @since 12.9 Security fix #371 Request Forgery add CSRF token to links/forms containing `modfunc=`
+ *
+ * @param  string  $mode Mode: start|stop. Optional, defaults to ''.
+ * @return boolean True if ETagCache activated, else false.
+ */
+function ETagCache( $mode = '' )
+{
+	global $ETagCache;
+
+	static $ob_started = false;
+
+	if ( $mode === 'start'
+		&& ! $ob_started )
+	{
+		// Start buffer (to generate ETag).
+		$ob_started = ob_start();
+	}
+	elseif ( $mode === 'stop'
+		&& $ob_started )
+	{
+		// Stop & get buffer buffer (to generate ETag).
+		$etag_buffer = ob_get_clean();
+
+		// Add CSRF token to links/forms containing `modfunc=`
+		$etag_buffer = str_replace(
+			[ '&modfunc=', '?modfunc=' ],
+			[
+				'&token=' . urlencode( $_SESSION['token'] ) . '&modfunc=',
+				'?token=' . urlencode( $_SESSION['token'] ) . '&modfunc=',
+			],
+			$etag_buffer
+		);
+
+		if ( ! $ETagCache )
+		{
+			echo $etag_buffer;
+
+			return false;
+		}
+
+		/**
+		 * Generate ETag
+		 * Weak ETag ("W/").
+		 *
+		 * @link https://en.wikipedia.org/wiki/HTTP_ETag
+		 */
+		$etag = 'W/' . md5( $etag_buffer );
+
+		// If-None-Match header sent by client.
+
+		if ( isset( $_SERVER['HTTP_IF_NONE_MATCH'] )
+			&& $_SERVER['HTTP_IF_NONE_MATCH'] === $etag )
+		{
+			/**
+			 * private means can be stored only in a private cache (e.g. local caches in browsers)
+			 * no-cache does not mean "do not cache" but requires the cache to revalidate it before reuse
+			 *
+			 * @link https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+			 */
+			header( "Cache-Control: private, no-cache" );
+
+			// Page cached: send 304 + empty content.
+			header( $_SERVER['SERVER_PROTOCOL'] . ' 304 Not Modified' );
+
+			exit;
+		}
+		else
+		{
+			// FJ fix headers already sent error when program outputs buffer.
+
+			if ( ! headers_sent() )
+			{
+				header( "Cache-Control: private, no-cache" );
+
+				// Send ETag + content (buffer).
+				header( 'ETag: ' . $etag );
+			}
+
+			echo $etag_buffer;
+		}
+	}
+
+	return $ETagCache;
+}
+
+
+/**
+ * Null coalesce.
+ * Useful to prevent PHP undefined index / variable notices.
+ * Equivalent to:
+ * `isset( $var ) ? $var : null`
+ *
+ * @example $extra['SELECT'] = issetVal( $extra['SELECT'], '' );
+ *
+ * @since 5.0
+ *
+ * @todo Migrate to PHP7 ?? operator.
+ * @link https://www.php.net/manual/en/migration70.new-features.php#migration70.new-features.null-coalesce-op
+ *
+ * @param  mixed &$var    Variable.
+ * @param  mixed $default Default value if undefined. Defaults to null.
+ * @return mixed Variable or default.
+ */
+function issetVal( &$var, $default = null )
+{
+	return ( isset( $var ) ) ? $var : $default;
+}

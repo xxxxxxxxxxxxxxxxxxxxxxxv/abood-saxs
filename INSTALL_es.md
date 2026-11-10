@@ -1,0 +1,225 @@
+# INSTRUCCIONES DE INSTALACIÓN
+
+## RosarioSIS Student Information System
+
+RosarioSIS es una aplicación web que depende de un servidor web, el lenguaje de script PHP y un servidor de base de datos PostgreSQL o MySQL/MariaDB.
+
+Para que funcione RosarioSIS se debe primero tener el servidor web, PostgreSQL (o MySQL/MariaDB), y PHP (incluyendo las extensiones `pgsql`, `mysqli`, `pdo`, `gettext`, `intl`, `mbstring`, `gd`, `curl`, `xml` y `zip`) operativos. La implementación de aquellos varia con el sistema operativo así que está fuera del alcance de este breve documento de instalación.
+
+RosarioSIS ha sido probado en:
+
+- Windows 10 con Apache 2.4.58, MariaDB 10.4.32, y PHP 8.1.25
+- macOS Monterey con Apache 2.4.54, Postgres 14.4, y PHP 8.0.21
+- Ubuntu 24.04 con Apache 2.4.52, MySQL 8.0.41, y PHP 5.6.40
+- Ubuntu 22.04 con Apache 2.4.57, Postgres 14.9, y PHP 8.1.2
+- Debian Bookworm con Apache 2.4.57, Postgres 15.5, MariaDB 10.11.4, y PHP 8.3.10
+- Shared hosting con cPanel, nginx, Postgres 9.2, y PHP 7.2
+- a traves de Mozilla Firefox y Google Chrome
+- con BrowserStack para la compatibilidad de navegadores (no compatible con Internet Explorer)
+
+Requerimientos mínimos: [PHP](https://www.php.net/supported-versions.php) 5.5.9 & [PostgreSQL](https://www.postgresql.org/support/versioning/) 9.2 or [MySQL](https://en.wikipedia.org/wiki/MySQL#Release_history) 5.6/[MariaDB](https://mariadb.com/kb/en/mariadb-releases/)
+
+Instrucciones de instalación:
+
+- [**Windows**](https://gitlab.com/francoisjacquet/rosariosis/wikis/Instalar-RosarioSIS-en-Windows)
+- [**Mac**](https://gitlab.com/francoisjacquet/rosariosis/-/wikis/How-to-install-RosarioSIS-on-Mac-(macOS,-OS-X)) (en inglés)
+- [**cPanel**](https://gitlab.com/francoisjacquet/rosariosis/wikis/How-to-install-RosarioSIS-on-cPanel) (en inglés)
+- [**Softaculous**](https://gitlab.com/francoisjacquet/rosariosis/-/wikis/How-to-install-RosarioSIS-with-Softaculous) (en inglés)
+- [**Docker**](https://gitlab.com/francoisjacquet/docker-rosariosis/) (en inglés)
+- **Ubuntu** (o cualquier distribución Linux basada en Debian), ver abajo
+
+En caso de que no disponga de los recursos técnicos para instalar RosarioSIS, puede elegir un plan alojado en https://www.rosariosis.com/es
+
+
+Instalar el paquete
+-------------------
+
+Descomprima la [última versión](https://www.rosariosis.org/es/download/) de RosarioSIS, o clona el repositorio git (y haga el checkout del tag de la [última versión](https://gitlab.com/francoisjacquet/rosariosis/-/releases)) en un directorio accesible con el navegador. Edita el archivo `config.inc.sample.php` para definir las variables de configuración apropiadas, y renombralo `config.inc.php`.
+
+- `$DatabaseType` Tipo del servidor de base de datos: mysql o postgresql.
+- `$DatabaseServer` Nombre o dirección IP del servidor de base de datos.
+- `$DatabaseUsername` Nombre de usuario para conectarse a la base de datos.
+- `$DatabasePassword` Contraseña para conectarse a la base de datos.
+- `$DatabaseName` Nombre de la base de datos.
+
+- `$wkhtmltopdfPath` Camino completo hacia el utilitario de generación de PDF, wkhtmltopdf.
+- `$DefaultSyear` Año escolar por defecto. Solo cambiar después de haber corrido el programa _Transferir_. NO cambiar durante la instalación.
+- `$RosarioNotifyAddress` Dirección de email para las notificaciones (nuevo administrador, nuevo estudiante / usuario, nueva inscripción).
+- `$RosarioLocales` Lista separada por comas de códigos de lenguajes. Ver la carpeta `locale/` para los códigos disponibles.
+- `$RosarioURL` URL que apunta a la instancia de RosarioSIS. Configurado automáticamente al iniciar sesión por primera vez. Actualizar después de cambiar de dominio o después de cambiar el sitio de http a https.
+
+#### Variables opcionales
+
+- `$DatabasePort` Número de puerto para acceder a la base de datos. Por defecto: 5432 para PostgreSQL y 3306 para MySQL.
+- `$RosarioErrorsAddress` Dirección de email para los errores (PHP fatal, base de datos, intentos de pirateo).
+- `$Timezone` Zona horaria usada por la funciones de fecha y tiempo. [Listado de zonas horarias admitidas](http://php.net/manual/es/timezones.php).
+- `$TrustedProxies` Proxy de confianza. Lista de dirrecciones de IP o rangos CIDR (separados por comas). A definir si RosarioSIS está detras de un proxy reverso o un equilibrador de carga.
+- `$RosarioPath` Camino completo hacia la instalación de RosarioSIS.
+- `$StudentPicturesPath` Camino hacia las fotos de los estudiantes.
+- `$UserPicturesPath` Camino hacia las fotos de los usuarios.
+- `$FileUploadsPath` Camino hacia los archivos subidos.
+- `$LocalePath` Camino hacia los lenguajes. Reinicie Apache después de cambiarlo.
+- `$PNGQuantPath` Camino hacia [PNGQuant](https://pngquant.org/) (compresión de las imagenes PNG).
+- `$ETagCache` Pasar a `false` para desactivar el [caché ETag](https://es.wikipedia.org/wiki/HTTP_ETag) y desactivar el caché de sesión "privada". Ver [Sesiones y seguridad](https://secure.php.net/manual/es/session.security.php).
+- `define( 'ROSARIO_POST_MAX_SIZE_LIMIT', 16 * 1024 * 1024 );` Limitar el tamaño de `$_POST` (16MB por defecto). Detalles [acá](https://gitlab.com/francoisjacquet/rosariosis/-/blob/mobile/Warehouse.php#L322).
+- `define( 'ROSARIO_DEBUG', true );` Modo debug activado.
+- `define( 'ROSARIO_DISABLE_ADDON_UPLOAD', true );` Desactivar el upload de complementos (módulos y plugins).
+- `define( 'ROSARIO_DISABLE_ADDON_DELETE', true );` Desactivar la posibilidad de eliminar complementos (modules & plugins).
+- `define( 'ROSARIO_DISABLE_USAGE_STATISTICS', true );` Desactivar la colecta de estadísticas de uso.
+
+
+Crear la base de datos
+----------------------
+
+Ahora, está listo para configurar la base de datos de RosarioSIS. Si tiene acceso al símbolo del sistema de su servidor, abra una ventana del terminal, y sigua estas instrucciones.
+
+Las instrucciones siguientes aplican para **PostgreSQL** (ver abajo para MySQL):
+
+1. Entra a PostgreSQL con el usuario postgres:
+```bash
+server$ sudo -u postgres psql
+```
+2. Crea el usuario rosariosis:
+```bash
+postgres=# CREATE USER rosariosis_user WITH PASSWORD 'rosariosis_user_password';
+```
+3. Crea la base de datos rosariosis:
+```bash
+postgres=# CREATE DATABASE rosariosis_db WITH ENCODING 'UTF8' OWNER rosariosis_user;
+```
+4. Salga de PostgreSQL:
+```bash
+postgres=# \q
+```
+
+También, el archivo [`pg_hba.conf`](http://www.postgresql.org/docs/current/static/auth-pg-hba-conf.html) puede ser editado para activar la conexión de usuarios con contraseña (`md5`):
+```
+# "local" is for Unix domain socket connections only
+local   all             all                                     md5
+```
+
+---------------------------------------------
+
+Las instrucciones siguientes aplican para **MySQL**:
+
+1. Entra a MySQL con el usuario root:
+```bash
+server$ sudo mysql
+```
+o
+```bash
+server$ mysql -u root -p
+```
+2. Permitir la creación de funciones:
+```bash
+mysql> SET GLOBAL log_bin_trust_function_creators=1;
+```
+3. Crea el usuario rosariosis:
+```bash
+mysql> CREATE USER 'rosariosis_user'@'localhost' IDENTIFIED BY 'rosariosis_user_password';
+```
+4. Crea la base de datos rosariosis:
+```bash
+mysql> CREATE DATABASE rosariosis_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_520_ci;
+mysql> GRANT ALL PRIVILEGES ON rosariosis_db.* TO 'rosariosis_user'@'localhost';
+```
+5. Salga de MySQL:
+```bash
+mysql> \q
+```
+
+
+Instalar la base de datos
+-------------------------
+
+Para instalar la base de datos, apunte su navegador a: `http://sudominio.com/REPERTORIO_DE_INSTALACION/InstallDatabase.php`
+
+Es todo!... ahora, apunte su navegador a: `http://sudominio.com/REPERTORIO_DE_INSTALACION/index.php`
+
+y entra con el nombre de usuario 'admin' y la contraseña 'admin'. Con esta cuenta, podrá agregar nuevos usuarios, y modificar o suprimir los tres usuarios de ejemplo.
+
+
+Problemas
+---------
+
+Para ayudarlo a detectar problemas de instalación, apunte su navegador a: `http://sudominio.com/REPERTORIO_DE_INSTALACION/diagnostic.php`
+
+
+Extensiones PHP
+---------------
+
+Instrucciones de instalación para Ubuntu 22.04:
+```bash
+server$ sudo apt-get install php-pgsql php-mysql php-pdo php-intl php-mbstring php-gd php-curl php-xml php-zip
+```
+
+
+php.ini
+-------
+
+Configuración PHP recomendada. Editar el archivo [`php.ini`](https://www.php.net/manual/es/ini.list.php) como sigue:
+```
+; Maximum time in seconds a PHP script is allowed to run
+max_execution_time = 240
+
+; Maximum accepted input variables ($_GET, $_POST)
+; 4000 allows submitting lists of up to 1000 elements, each with multiple inputs
+max_input_vars = 4000
+
+; Maximum memory (RAM) allocated to a PHP script
+memory_limit = 512M
+
+; Session timeout: 1 hour
+session.gc_maxlifetime = 3600
+
+; Maximum allowed size for uploaded files
+upload_max_filesize = 50M
+
+; Must be greater than or equal to upload_max_filesize
+post_max_size = 51M
+```
+Reiniciar PHP y Apache.
+
+
+Otros lenguajes
+---------------
+
+Instrucciones de instalación para Ubuntu. Instalar la locale español (España):
+```bash
+server$ echo "es_ES.UTF-8 UTF-8" | sudo tee -a /etc/locale.gen
+server$ sudo locale-gen
+server$ sudo update-locale
+```
+Luego reinicie el servidor.
+
+
+[wkhtmltopdf](http://wkhtmltopdf.org/)
+--------------------------------------
+
+Instrucciones de instalación para Ubuntu 22.04 (jammy), funciona también para Ubuntu 24.04 (noble):
+```bash
+server$ wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb
+server$ sudo apt install ./wkhtmltox_0.12.6.1-2.jammy_amd64.deb
+server$ wkhtmltopdf --version
+server$ wkhtmltopdf 0.12.6.1 (with patched qt)
+```
+
+Definir el camino en el archivo `config.inc.php`:
+    `$wkhtmltopdfPath = '/usr/local/bin/wkhtmltopdf';`
+
+
+Envio de email
+--------------
+
+Instrucciones de instalación para Ubuntu. Activar la función PHP `mail()`:
+```bash
+server$ sudo apt-get install sendmail
+```
+
+
+Configuración adicional
+-----------------------
+
+[Guía de Configuración Rápida](https://www.rosariosis.org/es/quick-setup-guide/)
+
+[Asegurar RosarioSIS](https://gitlab.com/francoisjacquet/rosariosis/-/wikis/Secure-RosarioSIS)
